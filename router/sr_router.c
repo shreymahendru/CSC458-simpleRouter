@@ -48,7 +48,7 @@ void sr_init(struct sr_instance* sr)
     
     /* Add initialization code here! */
 
-} /* -- sr_init -- */
+} /* -- sr_init -- */	
 
 /*---------------------------------------------------------------------
  * Method: sr_handlepacket(uint8_t* p,char* interface)
@@ -77,8 +77,37 @@ void sr_handlepacket(struct sr_instance* sr,
   assert(interface);
 
   printf("*** -> Received packet of length %d \n",len);
+  print_hdrs(packet, len);
+  printf("%s\n", interface);
+  printf("Printing the interface");
 
   /* fill in code here */
+	printf("Printing Headers:\n");
+	print_hdrs(packet, len);
+  /*SANITY CHECKS*/
 
+  /*check if the ethernet frame is the greater than min length*/
+  if(len <= sizeof(sr_ethernet_hdr_t)){
+    return;   
+  }
+  /*getting the header since it is valid */
+  sr_ethernet_hdr_t* frameHeader = (sr_ethernet_hdr_t*)packet;
+  /*get the interface from the linked list*/
+  struct sr_if* iface = sr_get_interface(sr, interface); 
+  /*print the interface For DEBUGGING*/
+  printf("Printing the interface\n");
+  sr_print_if(iface);
+  printf("\n");
+  /*checking the validity of the interface*/
+  assert(iface);
+
+  /*check which ethertype*/
+  if(ethertype(packet) == ethertype_arp){
+    printf("THIS IS A MOFO ARP\n");
+  }
+  else if (ethertype(packet) == ethertype_ip) {
+    printf("This MOFO is IP type\n");
+  }
 }/* end sr_ForwardPacket */
+
 
