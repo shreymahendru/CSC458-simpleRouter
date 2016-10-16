@@ -48,7 +48,7 @@ void sr_init(struct sr_instance* sr)
     
     /* Add initialization code here! */
 
-} /* -- sr_init -- */
+} /* -- sr_init -- */ 
 
 /*---------------------------------------------------------------------
  * Method: sr_handlepacket(uint8_t* p,char* interface)
@@ -77,115 +77,146 @@ void sr_handlepacket(struct sr_instance* sr,
   assert(interface);
 
   printf("*** -> Received packet of length %d \n",len);
+  print_hdrs(packet, len);
+  printf("%s\n", interface);
+  printf("Printing the interface");
 
   /* fill in code here */
+  print_hdrs(packet, len);
+  
+  printf("%s\n", interface);
+  
+  printf("Printing the interface");
+  
+  
+  /* fill in code here */
+  
+  printf("Printing Headers:\n");
   
   print_hdrs(packet, len);
-	
-  printf("%s\n", interface);
-	
-  printf("Printing the interface");
-	
-	
-  /* fill in code here */
-	
-  printf("Printing Headers:\n");
-	
-  print_hdrs(packet, len);
-	
+  
   /*SANITY CHECKS*/
-	
-	
+  
+  
   /*check if the ethernet frame is the greater than min length*/
   if(len <= sizeof(sr_ethernet_hdr_t)){
     return; 
   }
-	
+  
   /*getting the header since it is valid */
   sr_ethernet_hdr_t* frameHeader = (sr_ethernet_hdr_t*)packet;
-	
+  
   /*get the interface from the linked list*/
   struct sr_if* iface = sr_get_interface(sr, interface); 
-	
+  
   /*print the interface For DEBUGGING*/
 
   printf("Printing the interface\n");
-	
+  
   sr_print_if(iface);
-	
+  
   printf("\n");
-	
+  
   /*checking the validity of the interface*/
-	
+  
   assert(iface);
-	
-	
+  
+  
   /*check which ethertype*/
-	
+  
   if(ethertype(packet) == ethertype_arp){
-		printf("arp mode!\n");
-		/*get arp packet*/
-  		sr_arp_hdr_t *arp_hdr = (sr_arp_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
-  		/* check arp type */
-  		if (ntohs(arp_hdr->ar_op) == arp_op_request){
-			printf("ARP REQUEST!\n");  
-			/*check if request is sending for me */
-			
-			
-			if (arp_hdr->ar_tip == iface->ip){
-				
-				printf("this arp request is for me!\n");
-				/* create arp reply (should we just go handle_arp function here?)*/
-				
-				struct sr_arpentry *entry;
-				entry = sr_arpcache_lookup(&sr->cache, arp_hdr->ar_sip);
-  				if (entry){
-  					/*found the entry*/
-  				}else{
-  					struct sr_arpreq *request;
-  					request = sr_arpcache_queuereq(&sr->cache, arp_hdr->ar_tip, packet, len, iface->name);
-  				}
-			}else if(arp_hdr->ar_tip != iface->ip){
-				printf("this arp is NOT for me! drop it\n");
-				/* drop */
-			}
+    printf("arp mode!\n");
+    /*get arp packet*/
+      sr_arp_hdr_t *arp_hdr = (sr_arp_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
+      /* check arp type */
+      if (ntohs(arp_hdr->ar_op) == arp_op_request){
+        printf("ARP REQUEST!\n");  
+      
+        /*check if request is sending for me */
+        if (arp_hdr->ar_tip == iface->ip){
+          printf("this arp request is for me!\n");
+          /* create arp reply (should we just go handle_arp function here?)*/
+            create_send_arp_reply(sr, packet, iface);
+          }
+        else{
+          printf("this arp is NOT for me! drop it\n");
+          /* drop */
+          return;
+        }
+      }
+      else if (ntohs(arp_hdr->ar_op) == arp_op_reply){
+        printf("ARP reply!\n"); 
+            
+      }
 
-
-
-
-
-
-
-
-
-
-
-
-	
-  		}
-  
-  		else if (ntohs(arp_hdr->ar_op) == arp_op_reply){
-			printf("ARP reply!\n"); 
-			  		
-  		}
-
-	  
-  }
-	
-  else if (ethertype(packet) == ethertype_ip) {
-	
-  		printf("This MOFO is IP type\n");
-	
-  }
-  
     
+  }
+  
+  else if (ethertype(packet) == ethertype_ip) {
+  
+      printf("This MOFO is IP type\n");
+  
+  }
+  /*check if the ethernet frame is the greater than min length*/
+  if(len <= sizeof(sr_ethernet_hdr_t)){
+    return;   
+  }
+  /*print the interface For DEBUGGING*/
+  printf("Printing the interface\n");
+  sr_print_if(iface);
+  printf("\n");
+  /*checking the validity of the interface*/
+  assert(iface);
 
-
-
-
-
-
+  /*check which ethertype*/
+  if(ethertype(packet) == ethertype_arp){
+    printf("THIS IS A MOFO ARP\n");
+  }
+  else if (ethertype(packet) == ethertype_ip) {
+    printf("This MOFO is IP type\n");
+  }
 }/* end sr_ForwardPacket */
+
+
+void create_send_arp_reply(struct sr_instance* sr, uint8_t* packet, struct sr_if* interface){
+
+  uint8_t *arp_packet = (uint8_t*) malloc(sizeof(struct sr_ethernet_hdr_t) + sizeof(struct sr_arp_hdr_t));
+
+  struct sr_ethernet_hdr_t* ether_head= (sr_ethernet_hdr_t*) arp_packet;
+
+  struct sr_ethernet_hdr_t* eframe_recieved = (sr_ethernet_hdr_t*) packet;
+  /*copying like this cause they are arrays*/
+  /*setting host addr to what interface we recieved on*/
+  memcpy(ether_head->ether_shost, interface->addr, ETHER_ADDR_LEN);
+  /*setting destination to what the ethernet frame's source addr we recieved*/
+  memcpy(ether_head->ether_dhost, eframe_recieved->ether_shost, ETHER_ADDR_LEN);
+
+  ether_head->ether_type = htons(ethertype_arp);
+
+  struct sr_arp_hdr_t* arp_head = (sr_arp_hdr_t*)(arp_packet + sizeof(struct sr_ethernet_hdr_t));
+
+  struct sr_arp_hdr_t* arp_recieved = (sr_arp_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
+
+  arp_head->ar_hrd = htons(arp_hrd_ethernet);             /* format of hardware address   */
+  arp_head->ar_pro = htons(2048);             /* format of protocol address   */
+  arp_head->ar_hln = ETHER_ADDR_LEN;             /* length of hardware address   */
+  arp_head->ar_pln = 4;             /* length of protocol address   */
+  arp_head->ar_op = htons(arp_op_reply);              /* ARP opcode (command)         */
+  memcpy(arp_head->ar_sha, interface->ether_shost, ETHER_ADDR_LEN);   /* sender hardware address      */
+  arp_head->ar_sip = interface->ip;             /* sender IP address            */
+  memcpy(arp_head->ar_tha, eframe_recieved->ether_shost, ETHER_ADDR_LEN);   /* target hardware address      */
+  arp_head->ar_tip = arp_recieved->ar_sip;             /* target IP address= sender of arp_request*/ 
+
+  uint32_t len = sizeof(arp_packet);
+  print_hdrs(arp_packet, len);
+
+  sr_send_packet(&sr, arp_packet, len, interface->name);
+
+}
+
+
+
+
 
 
 
