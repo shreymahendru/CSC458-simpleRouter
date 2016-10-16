@@ -132,8 +132,6 @@ void sr_handlepacket(struct sr_instance* sr,
 			/*check if request is sending for me */
 			
 			
-			
-			
 			if (arp_hdr->ar_tip == iface->ip){
 				
 				printf("this arp request is for me!\n");
