@@ -11,6 +11,63 @@
 #include "sr_if.h"
 #include "sr_protocol.h"
 
+
+
+void create_send_arp(struct sr_instance *sr, struct sr_arpreq *req){
+
+    /*make a packet in memory*/
+    uint8_t *arp_packet = (uint8_t*) malloc(sizeof(struct sr_ethernet_hdr_t) + sizeof(struct sr_arp_hdr_t));
+
+    /*make ethernet header*/
+    struct sr_ethernet_hdr_t *eth_head = (sr_ethernet_hdr_t*) apr_packet;
+
+    /*getting host mac for etherframe from a packet send by host*/
+    struct sr_ethernet_hdr_t *pac =  (sr_ethernet_hdr_t *) req->packets->buf;
+
+    /*copying like this cause they are arrays*/
+    memcpy(eth_head->ether_shost, pac->ether_shost, ETHER_ADDR_LEN);
+    memcpy(eth_head->ether_dhost, pac->ether_dhost, ETHER_ADDR_LEN);
+
+    /*opposite of what they did in starter code in ether_type funnction in utils*/
+    eth_head->ether_type = htons(ethertype_arp);
+
+    /*moving pointer to arp header*/
+    struct sr_arp_hdr_t *arp = (sr_arp_hdr_t*) (arp_packet + sizeof(struct sr_ethernet_hdr_t));
+
+    arp->ar_hrd = htons(arp_hrd_ethernet);
+    arp->ar_pro = htons(ethertype_arp);
+    arp->ar_hln = ETHER_ADDR_LEN;
+    arp->ar_pln = INET_ADDRSTRLEN;             /* length of protocol address   */
+    arp->ar_op = htons(arp_op_request);              /* ARP opcode (command)         */
+    memcpy(arp->ar_sha, pac->ether_shost, ETHER_ADDR_LEN);   /* sender hardware address      */
+
+    struct sr_arp_hdr_t *pac_arp_hdr = (sr_arp_hdr_t *)( pac + sizeof(sr_ethernet_hdr_t));
+    arp->ar_sip = pac_arp_hdr->ar_sip ;             /* sender IP address            */
+    memcpy(arp->ar_tha, 0, ETHER_ADDR_LEN);   /* target hardware address      */
+    arp->ar_tip = req->ip;             /* target IP address            */
+
+    /*now send this to all know interfaces*/
+    
+
+
+}
+
+void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req){
+    /*get current time*/
+    time_t now = time(0);
+    if (difftime(now, req->sent) > 1.0){
+        if (req->times_sent >= 5){
+        }
+        else{
+            create_send_arp(sr, req);
+            req->sent = now;
+            req->times_sent++; 
+        }
+    }
+
+}
+
+
 /* 
   This function gets called every second. For each request sent out, we keep
   checking whether we should resend an request or destroy the arp request.
@@ -18,6 +75,7 @@
 */
 void sr_arpcache_sweepreqs(struct sr_instance *sr) { 
     /* Fill this in */
+
 }
 
 /* You should not need to touch the rest of this code. */
