@@ -15,6 +15,10 @@
 #include <assert.h>
 #include <inttypes.h>
 
+#include <stdlib.h> 
+
+#include <string.h> 
+
 #include "sr_if.h"
 #include "sr_rt.h"
 #include "sr_router.h"
@@ -66,6 +70,8 @@ void sr_init(struct sr_instance* sr)
  *
  *---------------------------------------------------------------------*/
 
+void create_send_arp_reply(struct sr_instance* sr, uint8_t * packet, struct sr_if* interface);
+
 void sr_handlepacket(struct sr_instance* sr,
         uint8_t * packet/* lent */,
         unsigned int len,
@@ -105,7 +111,7 @@ void sr_handlepacket(struct sr_instance* sr,
   
   /*getting the header since it is valid */
   sr_ethernet_hdr_t* frameHeader = (sr_ethernet_hdr_t*)packet;
-  
+  assert(frameHeader); 
   /*get the interface from the linked list*/
   struct sr_if* iface = sr_get_interface(sr, interface); 
   
@@ -121,9 +127,11 @@ void sr_handlepacket(struct sr_instance* sr,
   
   assert(iface);
   
-  
+  /*check if the ethernet frame is the greater than min length*/
+  if(len <= sizeof(sr_ethernet_hdr_t)){
+    return;   
+  }
   /*check which ethertype*/
-  
   if(ethertype(packet) == ethertype_arp){
     printf("arp mode!\n");
     /*get arp packet*/
@@ -148,43 +156,21 @@ void sr_handlepacket(struct sr_instance* sr,
         printf("ARP reply!\n"); 
             
       }
-
-    
   }
-  
   else if (ethertype(packet) == ethertype_ip) {
   
       printf("This MOFO is IP type\n");
-  
-  }
-  /*check if the ethernet frame is the greater than min length*/
-  if(len <= sizeof(sr_ethernet_hdr_t)){
-    return;   
-  }
-  /*print the interface For DEBUGGING*/
-  printf("Printing the interface\n");
-  sr_print_if(iface);
-  printf("\n");
-  /*checking the validity of the interface*/
-  assert(iface);
-
-  /*check which ethertype*/
-  if(ethertype(packet) == ethertype_arp){
-    printf("THIS IS A MOFO ARP\n");
-  }
-  else if (ethertype(packet) == ethertype_ip) {
-    printf("This MOFO is IP type\n");
   }
 }/* end sr_ForwardPacket */
 
 
-void create_send_arp_reply(struct sr_instance* sr, uint8_t* packet, struct sr_if* interface){
+void create_send_arp_reply(struct sr_instance* sr, uint8_t * packet, struct sr_if* interface){
 
-  uint8_t *arp_packet = (uint8_t*) malloc(sizeof(struct sr_ethernet_hdr_t) + sizeof(struct sr_arp_hdr_t));
+  uint8_t *arp_packet = (uint8_t*) malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t));
 
-  struct sr_ethernet_hdr_t* ether_head= (sr_ethernet_hdr_t*) arp_packet;
+  sr_ethernet_hdr_t* ether_head= (sr_ethernet_hdr_t*) arp_packet;
 
-  struct sr_ethernet_hdr_t* eframe_recieved = (sr_ethernet_hdr_t*) packet;
+  sr_ethernet_hdr_t* eframe_recieved = (sr_ethernet_hdr_t*) packet;
   /*copying like this cause they are arrays*/
   /*setting host addr to what interface we recieved on*/
   memcpy(ether_head->ether_shost, interface->addr, ETHER_ADDR_LEN);
@@ -193,24 +179,33 @@ void create_send_arp_reply(struct sr_instance* sr, uint8_t* packet, struct sr_if
 
   ether_head->ether_type = htons(ethertype_arp);
 
-  struct sr_arp_hdr_t* arp_head = (sr_arp_hdr_t*)(arp_packet + sizeof(struct sr_ethernet_hdr_t));
+  sr_arp_hdr_t* arp_head = (sr_arp_hdr_t*)(arp_packet + sizeof(sr_ethernet_hdr_t));
 
-  struct sr_arp_hdr_t* arp_recieved = (sr_arp_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
+  sr_arp_hdr_t* arp_recieved = (sr_arp_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
 
   arp_head->ar_hrd = htons(arp_hrd_ethernet);             /* format of hardware address   */
   arp_head->ar_pro = htons(2048);             /* format of protocol address   */
   arp_head->ar_hln = ETHER_ADDR_LEN;             /* length of hardware address   */
   arp_head->ar_pln = 4;             /* length of protocol address   */
   arp_head->ar_op = htons(arp_op_reply);              /* ARP opcode (command)         */
-  memcpy(arp_head->ar_sha, interface->ether_shost, ETHER_ADDR_LEN);   /* sender hardware address      */
+  memcpy(arp_head->ar_sha, interface->addr, ETHER_ADDR_LEN);   /* sender hardware address      */
   arp_head->ar_sip = interface->ip;             /* sender IP address            */
   memcpy(arp_head->ar_tha, eframe_recieved->ether_shost, ETHER_ADDR_LEN);   /* target hardware address      */
   arp_head->ar_tip = arp_recieved->ar_sip;             /* target IP address= sender of arp_request*/ 
 
-  uint32_t len = sizeof(arp_packet);
+  uint32_t len = sizeof(sr_arp_hdr_t) + sizeof(sr_ethernet_hdr_t);
+
+  printf("PRINTING ARP REPLY\n");
   print_hdrs(arp_packet, len);
 
-  sr_send_packet(&sr, arp_packet, len, interface->name);
+  int ret = sr_send_packet(sr, arp_packet, len, interface->name);
+
+  if(ret == 0){
+    printf("We made it\n");
+  }
+  else{
+    printf("Got fucked\n");
+  }
 
 }
 
