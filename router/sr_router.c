@@ -138,7 +138,7 @@ void sr_handlepacket(struct sr_instance* sr,
       sr_arp_hdr_t *arp_hdr = (sr_arp_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
       /* check arp type */
       if (ntohs(arp_hdr->ar_op) == arp_op_request){
-        printf("ARP REQUEST!\n");  
+        printf("ARP is a REQUEST!\n");  
       
         /*check if request is sending for me */
         if (arp_hdr->ar_tip == iface->ip){
@@ -153,13 +153,38 @@ void sr_handlepacket(struct sr_instance* sr,
         }
       }
       else if (ntohs(arp_hdr->ar_op) == arp_op_reply){
-        printf("ARP reply!\n"); 
+        printf("ARP is a reply!\n"); 
             
       }
   }
   else if (ethertype(packet) == ethertype_ip) {
   
       printf("This MOFO is IP type\n");
+
+      sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t))
+      /*check if the ip packet is for us*/
+      unsigned int ip_length  = len - sizeof(sr_ethernet_hdr_t)
+
+      /*sanity cheack for ip packets*/
+      if (sizeof(sr_ip_hdr_t) < ip_length){
+          /*packet is too short, drop that shit*/
+          return;
+      }
+
+      /*check ipv4*/
+      if(ip_header->ip_v != 4){
+        /*not IPv4*/
+        return;
+      }
+
+      /*checksum check*/
+      uint16_t checksum = cksum((void *) ip_header, sizeof(sr_ip_hdr_t));
+      if (checksum != ip_header->ip_sum){
+        return; 
+      }
+      
+
+
   }
 }/* end sr_ForwardPacket */
 
