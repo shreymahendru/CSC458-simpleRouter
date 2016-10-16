@@ -13,7 +13,7 @@
 
 #include <stdio.h>
 #include <assert.h>
-
+#include <inttypes.h>
 
 #include "sr_if.h"
 #include "sr_rt.h"
@@ -79,6 +79,121 @@ void sr_handlepacket(struct sr_instance* sr,
   printf("*** -> Received packet of length %d \n",len);
 
   /* fill in code here */
+  
+  print_hdrs(packet, len);
+	
+  printf("%s\n", interface);
+	
+  printf("Printing the interface");
+	
+	
+  /* fill in code here */
+	
+  printf("Printing Headers:\n");
+	
+  print_hdrs(packet, len);
+	
+  /*SANITY CHECKS*/
+	
+	
+  /*check if the ethernet frame is the greater than min length*/
+  if(len <= sizeof(sr_ethernet_hdr_t)){
+    return; 
+  }
+	
+  /*getting the header since it is valid */
+  sr_ethernet_hdr_t* frameHeader = (sr_ethernet_hdr_t*)packet;
+	
+  /*get the interface from the linked list*/
+  struct sr_if* iface = sr_get_interface(sr, interface); 
+	
+  /*print the interface For DEBUGGING*/
+
+  printf("Printing the interface\n");
+	
+  sr_print_if(iface);
+	
+  printf("\n");
+	
+  /*checking the validity of the interface*/
+	
+  assert(iface);
+	
+	
+  /*check which ethertype*/
+	
+  if(ethertype(packet) == ethertype_arp){
+		printf("arp mode!\n");
+		/*get arp packet*/
+  		sr_arp_hdr_t *arp_hdr = (sr_arp_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
+  		/* check arp type */
+  		if (ntohs(arp_hdr->ar_op) == arp_op_request){
+			printf("ARP REQUEST!\n");  
+			/*check if request is sending for me */
+			
+			
+			
+			
+			if (arp_hdr->ar_tip == iface->ip){
+				
+				printf("this arp request is for me!\n");
+				/* create arp reply (should we just go handle_arp function here?)*/
+				
+				struct sr_arpentry *entry;
+				entry = sr_arpcache_lookup(&sr->cache, arp_hdr->ar_sip);
+  				if (entry){
+  					/*found the entry*/
+  				}else{
+  					struct sr_arpreq *request;
+  					request = sr_arpcache_queuereq(&sr->cache, arp_hdr->ar_tip, packet, len, iface->name);
+  				}
+			}else if(arp_hdr->ar_tip != iface->ip){
+				printf("this arp is NOT for me! drop it\n");
+				/* drop */
+			}
+
+
+
+
+
+
+
+
+
+
+
+
+	
+  		}
+  
+  		else if (ntohs(arp_hdr->ar_op) == arp_op_reply){
+			printf("ARP reply!\n"); 
+			  		
+  		}
+
+	  
+  }
+	
+  else if (ethertype(packet) == ethertype_ip) {
+	
+  		printf("This MOFO is IP type\n");
+	
+  }
+  
+    
+
+
+
+
+
 
 }/* end sr_ForwardPacket */
+
+
+
+
+
+
+
+
 
