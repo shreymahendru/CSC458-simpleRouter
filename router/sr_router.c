@@ -71,7 +71,7 @@ void sr_init(struct sr_instance* sr)
  *---------------------------------------------------------------------*/
 
 void create_send_arp_reply(struct sr_instance* sr, uint8_t * packet, struct sr_if* interface);
-struct sr_rt* sr_IP_LPM(struct sr_instance *sr, uint32_t IP);
+uint8_t *make_ip_packet( uint8_t * recieved_packet, unsigned int len);
 
 void sr_handlepacket(struct sr_instance* sr,
         uint8_t * packet/* lent */,
@@ -85,22 +85,9 @@ void sr_handlepacket(struct sr_instance* sr,
 
   printf("*** -> Received packet of length %d \n",len);
   print_hdrs(packet, len);
-  printf("%s\n", interface);
-  printf("Printing the interface");
-
-  /* fill in code here */
-  print_hdrs(packet, len);
-  
+  printf("Printing the interface\n");
   printf("%s\n", interface);
   
-  printf("Printing the interface");
-  
-  
-  /* fill in code here */
-  
-  printf("Printing Headers:\n");
-  
-  print_hdrs(packet, len);
   
   /*SANITY CHECKS*/
   
@@ -115,15 +102,7 @@ void sr_handlepacket(struct sr_instance* sr,
   assert(frameHeader); 
   /*get the interface from the linked list*/
   struct sr_if* iface = sr_get_interface(sr, interface); 
-  
-  /*print the interface For DEBUGGING*/
-
-  printf("Printing the interface\n");
-  
-  sr_print_if(iface);
-  
-  printf("\n");
-  
+    
   /*checking the validity of the interface*/
   
   assert(iface);
@@ -154,7 +133,33 @@ void sr_handlepacket(struct sr_instance* sr,
         }
       }
       else if (ntohs(arp_hdr->ar_op) == arp_op_reply){
-        printf("ARP is a reply!\n"); 
+        fprintf(stderr, "ARP IS A REPLY!!!!!!!!!!!!!!!!!!");
+        struct sr_arpreq* req; 
+        /*print("%s\n", );*/
+        print_addr_ip_int(ntohl(arp_hdr->ar_sip));
+        req = sr_arpcache_insert(&sr->cache, arp_hdr->ar_sha, arp_hdr->ar_sip);
+        if(req){
+          struct sr_packet *pkt;
+          for(pkt = req->packets; pkt!= NULL; pkt= pkt->next){
+            sr_ethernet_hdr_t * head = (sr_ethernet_hdr_t*)pkt->buf;
+            memcpy(head->ether_dhost, arp_hdr->ar_sha, ETHER_ADDR_LEN);
+            int ret = sr_send_packet(sr, pkt->buf, pkt->len, pkt->iface);
+            if(ret == 0){
+              printf("Packet Forwarded EZ\n");
+              print_hdrs(pkt->buf, pkt->len);
+
+              sr_arpcache_dump(&sr->cache);
+              return;
+            }
+            else{
+              printf("fuck up while forwarding\n");
+              return;
+            }
+          }
+          printf("Destroying the request!\n");
+          sr_arpreq_destroy(&sr->cache, req);
+        }
+
             
       }
   }
@@ -162,36 +167,136 @@ void sr_handlepacket(struct sr_instance* sr,
   
       printf("This MOFO is IP type\n");
 
-      sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t))
+      sr_ip_hdr_t *ip_header = (sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
       /*check if the ip packet is for us*/
-      unsigned int ip_length  = len - sizeof(sr_ethernet_hdr_t)
+      unsigned int ip_length  = len - sizeof(sr_ethernet_hdr_t);
 
       /*sanity cheack for ip packets*/
-      if (sizeof(sr_ip_hdr_t) < ip_length){
+      if (sizeof(sr_ip_hdr_t) > ip_length){
           /*packet is too short, drop that shit*/
+          printf("size too small\n");
           return;
       }
 
       /*check ipv4*/
       if(ip_header->ip_v != 4){
         /*not IPv4*/
+        printf("not IPv4\n");
         return;
       }
 
+      /*uint8_t * ip_packet = (void *) (packet + sizeof(sr_ethernet_hdr_t));*/
       /*checksum check*/
-      uint16_t checksum = cksum((void *) ip_header, sizeof(sr_ip_hdr_t));
-      if (checksum != ip_header->ip_sum){
+      printf("%d\n", ip_header->ip_hl);
+      uint16_t old_sum = ip_header->ip_sum;
+      ip_header->ip_sum = 0;
+      uint16_t checksum = cksum(ip_header, 20);
+      printf("check suuuuuuum = %d\n", checksum );
+      printf("check suuuuuuum IIIIIPPPPPPPPPPPPs = %d\n", ip_header->ip_sum);
+      if (checksum != old_sum){
+        printf("checksum invalid\n");
         return; 
       }
       
       /*getting the routing table entry which can be found by lpm form the routing table*/
-      sr_rt* routing_table_entry = sr_ip_lpm(sr, ip_header->ip_dst); 
+      char* matched_interface = sr_IP_LPM(sr, ip_header->ip_dst);
+      if (matched_interface == NULL){
+        printf("can't find interface\n");
+        return;
+      }
+      struct sr_if* interface_info = sr_get_interface(sr, matched_interface); 
 
-      
+      /*look for arp entry for mac if you find send that shit fam no arp shit */
+      struct sr_arpentry *entry = sr_arpcache_lookup(&sr->cache, ip_header->ip_dst);
+
+      if (entry){
+        /*found in cache*/
+        printf("Found in ARP Cache\n");
+        /*make_ip_packet(packet, len);*/
+        sr_ethernet_hdr_t* ether_header =(sr_ethernet_hdr_t*) packet;
+        memcpy(ether_header->ether_shost, interface_info->addr, ETHER_ADDR_LEN);
+        memcpy(ether_header->ether_dhost, entry->mac, ETHER_ADDR_LEN);
+        sr_ip_hdr_t * iphead = (sr_ip_hdr_t *) (packet + sizeof(sr_ethernet_hdr_t));
+        uint8_t ttl = iphead->ip_ttl;
+        ttl = ttl - 1;
+        if(ttl <= 0){
+          /*send icmp here!*/
+          printf("Ran out of ttl \n");
+          return;
+        }
+        else{
+          printf("Printing the lpm interface!!!!!!!! %s\n", matched_interface);
+          print_addr_ip_int(ntohl(ip_header->ip_dst));
+          ip_header->ip_ttl = ip_header->ip_ttl - -1;
+          ip_header->ip_sum = 0;
+          ip_header->ip_sum = cksum((void *) ip_header, 20);
+          int ret = sr_send_packet(sr, packet, len, matched_interface);
+            if(ret == 0){
+              printf("Packet Forwarded by cache found shit EZ\n");
+              print_hdrs(packet, len);
+              return;
+            }
+            else{
+              printf("fuck up while forwarding by chache found shit\n");
+              return;
+            }
+
+        }
 
 
+          /*change ethernet frame details here and source ip*/
+          /*sr_send */
+      }
+      else{
+        /*can't find in cache */
+        printf("Can't find in ARP Cache\n");
+        uint8_t * default_packet = make_ip_packet(packet, len);
+        /*change dest mac to interface mac*/
+        sr_ethernet_hdr_t * ether  =(sr_ethernet_hdr_t*) default_packet;
+        memcpy(ether->ether_shost, interface_info->addr, ETHER_ADDR_LEN);
+
+        sr_ip_hdr_t* ip_head = (sr_ip_hdr_t*) (default_packet + sizeof(sr_ethernet_hdr_t));
+        uint8_t ttl = ip_head->ip_ttl;
+        ttl = ttl - 1;
+        if(ttl <= 0){
+          /*send icmp here!*/
+          printf("Ran out of ttl \n");
+          return;
+        }
+        else{
+          printf("Printing the lpm interface!!!!!!!! %s\n", matched_interface);
+          print_addr_ip_int(ntohl(ip_header->ip_dst));
+          ip_head->ip_ttl = ip_head->ip_ttl - -1;
+          ip_head->ip_sum = 0;
+          ip_head->ip_sum = cksum((void *) ip_head, 20);
+          struct sr_arpreq *a =  sr_arpcache_queuereq(&sr->cache, ip_head->ip_dst,default_packet, len, matched_interface); 
+          print_addr_ip_int(ntohl(a->ip));
+        }   
+        /*in the que*/
+      }
+
+
+      /*else put that piece of shit in the queue*/
+
+      /*Then que takes care from there.... I hope..*/
+
+      /*sr_arpcache_dump(&sr->cache);*/
   }
 }/* end sr_ForwardPacket */
+
+
+uint8_t *make_ip_packet( uint8_t * recieved_packet, unsigned int len){
+
+  uint8_t * default_packet = malloc(len);
+
+  /*copying the original to prevent loss of payload*/
+  memcpy(default_packet, recieved_packet, len);
+
+  return default_packet;
+
+
+} 
+
 
 
 void create_send_arp_reply(struct sr_instance* sr, uint8_t * packet, struct sr_if* interface){
@@ -244,40 +349,28 @@ takes arguments simple router instance, an ip, and the routing table
  performs LPM (bitwise AND) and returns destination IP  
 */
 
-struct sr_rt* sr_IP_LPM(struct sr_instance *sr, uint32_t IP){
+char* sr_IP_LPM(struct sr_instance *sr, uint32_t IP){
   struct sr_rt* rt_walker = 0;
 
   if(sr->routing_table == 0){
       printf(" ERROR IN sr_router.c : method sr_IP_LPM : *warning* Routing table empty \n");
-      return;
+      return NULL;
   }
 
   rt_walker = sr->routing_table;
 
-  while((rt_walker->next) {
-    if ((inet_ntohl(rt_walker->dest->s_addr) & rt_walker->mask) == IP){
+  while(rt_walker->next) {
+    if ((rt_walker->dest.s_addr & rt_walker->mask.s_addr) == IP){
       break;
     }
     rt_walker = rt_walker->next;
     if (rt_walker == NULL){
         printf(" ERROR IN sr_router.c : method sr_IP_LPM : IP not found in routing table \n");
-        return;
+        return NULL;
     }
   }
 
   
-  return rt_walker;
+  return rt_walker->interface;
 }
-
-
-
-
-
-
-
-
-
-
-
-
 

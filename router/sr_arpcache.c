@@ -10,6 +10,73 @@
 #include "sr_router.h"
 #include "sr_if.h"
 #include "sr_protocol.h"
+#include "sr_utils.h"
+
+
+
+void create_send_arp(struct sr_instance *sr, struct sr_arpreq *req){
+
+    
+    /*make a packet in memory*/
+    uint8_t *arp_packet = (uint8_t*) malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t));
+
+    /*make ethernet header*/
+    sr_ethernet_hdr_t *eth_head = (sr_ethernet_hdr_t*) arp_packet;
+
+    /*get the interface to send arp on*/
+    char* Iface =  sr_IP_LPM(sr, req->ip);
+    struct sr_if* interface= sr_get_interface(sr, Iface);
+
+    /*copying like this cause they are arrays*/
+    memcpy(eth_head->ether_shost, interface->addr, ETHER_ADDR_LEN);
+    memset(eth_head->ether_dhost, 255, ETHER_ADDR_LEN); /*cause brodcast*/
+
+    /*opposite of what they did in starter code in ether_type funnction in utils*/
+    eth_head->ether_type = htons(ethertype_arp);
+
+    /*moving pointer to arp header*/
+    sr_arp_hdr_t *arp = (sr_arp_hdr_t*) (arp_packet + sizeof(sr_ethernet_hdr_t));
+
+    arp->ar_hrd = htons(arp_hrd_ethernet);
+    arp->ar_pro = htons(2048);
+    arp->ar_hln = ETHER_ADDR_LEN;
+    arp->ar_pln = 4;             /* length of protocol address   */
+    arp->ar_op = htons(arp_op_request);              /* ARP opcode (command)         */
+    memcpy(arp->ar_sha, interface->addr, ETHER_ADDR_LEN);   /* sender hardware address      */
+    arp->ar_sip = interface->ip ;             /* sender IP address            */
+    memset(arp->ar_tha, 0, ETHER_ADDR_LEN);   /* target hardware address      */
+    arp->ar_tip = req->ip;             /* target IP address            */
+
+    /*now send this */
+    uint32_t len = sizeof(sr_arp_hdr_t) + sizeof(sr_ethernet_hdr_t);
+    int ret = sr_send_packet(sr, arp_packet, len, interface->name);
+    if(ret == 0){
+        printf("arp req Packet sent");;    
+    }
+    else{
+        printf("Got fucked when sending ARP to: ");
+        print_addr_ip_int(ntohl(req->ip));
+    }
+}
+
+void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req){
+    /*get current time*/
+    time_t now = time(0);
+    if (difftime(now, req->sent) > 1.0){
+        if (req->times_sent >= 5){
+            /*ICMP unreachable*/
+            printf("Excided 5 tries detroying req!!!!!!!\n");
+            sr_arpreq_destroy(&sr->cache, req);
+        }
+        else{
+            create_send_arp(sr, req);
+            req->sent = now;
+            req->times_sent++; 
+        }
+    }
+
+}
+
 
 /* 
   This function gets called every second. For each request sent out, we keep
@@ -18,6 +85,13 @@
 */
 void sr_arpcache_sweepreqs(struct sr_instance *sr) { 
     /* Fill this in */
+    struct sr_arpreq *req;
+    struct sr_arpcache* arp_cache = &sr->cache; 
+    for (req = arp_cache->requests; req != NULL; req = req->next) {
+        handle_arpreq(sr, req);
+    }
+
+
 }
 
 /* You should not need to touch the rest of this code. */
@@ -59,7 +133,7 @@ struct sr_arpreq *sr_arpcache_queuereq(struct sr_arpcache *cache,
                                        uint8_t *packet,           /* borrowed */
                                        unsigned int packet_len,
                                        char *iface)
-{
+{   
     pthread_mutex_lock(&(cache->lock));
     
     struct sr_arpreq *req;
@@ -106,7 +180,7 @@ struct sr_arpreq *sr_arpcache_insert(struct sr_arpcache *cache,
     pthread_mutex_lock(&(cache->lock));
     
     struct sr_arpreq *req, *prev = NULL, *next = NULL; 
-    for (req = cache->requests; req != NULL; req = req->next) {
+    for (req = cache->requests; req != NULL; req = req->next) { 
         if (req->ip == ip) {            
             if (prev) {
                 next = req->next;
