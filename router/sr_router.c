@@ -71,6 +71,7 @@ void sr_init(struct sr_instance* sr)
  *---------------------------------------------------------------------*/
 
 void create_send_arp_reply(struct sr_instance* sr, uint8_t * packet, struct sr_if* interface);
+struct sr_rt* sr_IP_LPM(struct sr_instance *sr, uint32_t IP);
 
 void sr_handlepacket(struct sr_instance* sr,
         uint8_t * packet/* lent */,
@@ -183,6 +184,10 @@ void sr_handlepacket(struct sr_instance* sr,
         return; 
       }
       
+      /*getting the routing table entry which can be found by lpm form the routing table*/
+      sr_rt* routing_table_entry = sr_ip_lpm(sr, ip_header->ip_dst); 
+
+      
 
 
   }
@@ -232,6 +237,36 @@ void create_send_arp_reply(struct sr_instance* sr, uint8_t * packet, struct sr_i
     printf("Got fucked\n");
   }
 
+}
+
+/*
+takes arguments simple router instance, an ip, and the routing table
+ performs LPM (bitwise AND) and returns destination IP  
+*/
+
+struct sr_rt* sr_IP_LPM(struct sr_instance *sr, uint32_t IP){
+  struct sr_rt* rt_walker = 0;
+
+  if(sr->routing_table == 0){
+      printf(" ERROR IN sr_router.c : method sr_IP_LPM : *warning* Routing table empty \n");
+      return;
+  }
+
+  rt_walker = sr->routing_table;
+
+  while((rt_walker->next) {
+    if ((inet_ntohl(rt_walker->dest->s_addr) & rt_walker->mask) == IP){
+      break;
+    }
+    rt_walker = rt_walker->next;
+    if (rt_walker == NULL){
+        printf(" ERROR IN sr_router.c : method sr_IP_LPM : IP not found in routing table \n");
+        return;
+    }
+  }
+
+  
+  return rt_walker;
 }
 
 
