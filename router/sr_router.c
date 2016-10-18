@@ -374,3 +374,38 @@ char* sr_IP_LPM(struct sr_instance *sr, uint32_t IP){
   return rt_walker->interface;
 }
 
+void create_icmp(uint8_t *packet, uint8_t type, uint8_t code){
+    
+    /* get ip packet from orig ethernet frame */
+    
+    
+    sr_ip_hdr_t *ip_hdr = (sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
+    
+    /* move ptr to the data part of ip_packet */
+    sr_icmp_hdr_t *icmp = (sr_icmp_hdr_t *)(ip_hdr + sizeof(sr_ip_hdr_t));
+    
+    /* test orgin icmp i got */
+    /*print_hdr_icmp(icmp);*/
+    
+    /* process to copy info into icmp */
+    
+    icmp->icmp_type = type;
+    icmp->icmp_code = code; 
+    
+    /* unsure about the usage of cksum! this probably wrong */
+    icmp->icmp_sum = cksum(icmp, ICMP_DATA_SIZE);
+    
+    /* check copy result */
+    /*print_hdr_icmp(icmp);*/
+    
+}
+
+
+
+
+
+
+
+
+
+
