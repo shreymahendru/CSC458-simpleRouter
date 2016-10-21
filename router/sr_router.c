@@ -467,8 +467,7 @@ void create_send_icmp_echo(struct sr_instance *sr, uint8_t *recieved_packet, cha
     uint8_t* icmp_data = (uint8_t *) (icmp_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t));
     memcpy(icmp_data, recieved_data, ntohs(icmp_ip->ip_len) - sizeof(sr_ip_hdr_t) - sizeof(sr_icmp_hdr_t));
     /*for checksum*/
-    uint8_t * start_icmp = (uint8_t *) (icmp_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-    icmp_hdr->icmp_sum = cksum(start_icmp, ntohs(icmp_ip->ip_len) - sizeof(sr_ip_hdr_t));
+    icmp_hdr->icmp_sum = cksum((void *)icmp_hdr, ntohs(icmp_ip->ip_len) - sizeof(sr_ip_hdr_t));
 
     sr_arpcache_queuereq(&sr->cache, icmp_ip->ip_dst , icmp_packet , length, iface); 
     free(icmp_packet);
