@@ -139,6 +139,9 @@ void sr_handlepacket(struct sr_instance* sr,
       else if (ntohs(arp_hdr->ar_op) == arp_op_reply){
         printf("This Packet is an ARP reply!");
 
+        print_hdrs(packet, len);
+
+
         struct sr_arpreq* req; 
         req = sr_arpcache_insert(&sr->cache, arp_hdr->ar_sha, arp_hdr->ar_sip);
         if(req){
@@ -200,7 +203,7 @@ void sr_handlepacket(struct sr_instance* sr,
       struct sr_if* router = find_router_ips(sr, ip_header->ip_dst);
       printf("assssswswasawewdawdawdeaw%s\n", router->name );
       if (router != NULL){
-          create_send_icmp(sr, packet, 8, 0, matched_interface, len);
+          create_send_icmp(sr, packet, 8, 0, interface, len);
           return;
       }
        
@@ -457,10 +460,14 @@ void create_send_icmp(struct sr_instance *sr, uint8_t *recieved_packet, int type
     /*creqating the ether header for icmp */
     sr_ethernet_hdr_t *icmp_ether = (sr_ethernet_hdr_t *) icmp_packet;
 
-    struct sr_if* matched_interface = sr_get_interface(sr, iface); 
+    printf("PRINasiofbhaweiohfioqwehfopqhweion  IFACE%s\n", iface );
 
+
+
+    struct sr_if* matched_interface = sr_get_interface(sr, iface); 
+    print_addr_eth(matched_interface->addr);
     memcpy(icmp_ether->ether_shost, matched_interface->addr, ETHER_ADDR_LEN);
-    
+    /*memcpy(icmp_ether->ether_dhost, recieved_ether->ether_shost , ETHER_ADDR_LEN);*/
     icmp_ether->ether_type = ntohs(ethertype_ip);
 
     sr_ip_hdr_t *icmp_ip = (sr_ip_hdr_t *) (icmp_packet + sizeof(sr_ethernet_hdr_t)); 
@@ -504,21 +511,21 @@ void create_send_icmp(struct sr_instance *sr, uint8_t *recieved_packet, int type
       icmp_hdr->icmp_sum = 0;
 
       uint8_t* icmp_data = (uint8_t *) (icmp_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_hdr_t));
-      memcpy(icmp_data, recieved_data, recieved_data_length);
+      memcpy(icmp_data, recieved_data, ntohs(icmp_ip->ip_len) - sizeof(sr_ip_hdr_t) - sizeof(sr_icmp_hdr_t));
 
       uint8_t * start_icmp = (uint8_t *) (icmp_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
 
       
 
       sr_icmp_hdr_t *recieved_icmp = (sr_icmp_hdr_t *)( recieved_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-      icmp_hdr->icmp_sum = recieved_icmp->icmp_sum;
+      icmp_hdr->icmp_sum = cksum(start_icmp, ntohs(icmp_ip->ip_len) - sizeof(sr_ip_hdr_t));
 
 
       unsigned int recieved_icmp_length = sizeof(recieved_icmp) + recieved_data_length;
 
-      printf("length Recieved  === %d\n", recieved_icmp_length);
+      printf("length Recieved  === %d\n", length);
 
-      printf("length sending fuck =======%d\n", sizeof(sr_icmp_hdr_t) + sizeof(icmp_data) );
+      printf("length sending fuck =======%d\n",  ntohs(icmp_ip->ip_len) - sizeof(sr_ip_hdr_t));
 
 
       printf("length sending fuck knows what =======%d\n", sizeof(sr_icmp_hdr_t) + recieved_data_length );
@@ -546,20 +553,15 @@ void create_send_icmp(struct sr_instance *sr, uint8_t *recieved_packet, int type
     /*char* res = sr_IP_LPM(sr, ip_hdr->ip_src);
     memcpy(icmp_ether->ether_shost, sr_get_interface(sr, res)->addr, ETHER_ADDR_LEN);*/
 
-    struct sr_arpreq *a =  sr_arpcache_queuereq(&sr->cache, icmp_ip->ip_dst , icmp_packet , length, iface); 
-    print_addr_ip_int(ntohl(a->ip));
-/*
-    int ret = sr_send_packet(sr, icmp_packet, len, "eth3");
 
-    if(ret == 0){
-      printf("We Sent an icmp reply to: ");
-      print_addr_ip_int(ntohl(ip_hdr->ip_src));
-    }
-    else{
-      printf("I messed up While sending icmp reply to: ");
-      print_addr_ip_int(ntohl(ip_hdr->ip_src));
-    }
-*/
+
+    struct sr_arpreq *a =  sr_arpcache_queuereq(&sr->cache, icmp_ip->ip_dst , icmp_packet , length, iface); 
+    printf("FUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUCK\n");
+
+    print_addr_ip_int(ntohl( icmp_ip->ip_dst));
+
+
+
 
   free(icmp_packet);
 }
