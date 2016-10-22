@@ -74,7 +74,7 @@ void handle_arp_request(struct sr_instance* sr, uint8_t* recieved_packet, unsign
 void handle_ip_packet(struct sr_instance * sr, uint8_t* recieved_packet, unsigned int len, char* interface);
 struct sr_if* find_router_ips( struct sr_instance* sr, uint32_t IP);
 void forward_ip_packet(struct sr_instance * sr, uint8_t * packet, unsigned int len, char * matched_interface);
-void create_send_icmp_type3(struct sr_instance *sr, uint8_t *recieved_packet, int code, char* iface, unsigned int length);
+void create_send_icmp_type3(struct sr_instance *sr, uint8_t *recieved_packet, int type, int code, char* iface, unsigned int length);
 char* sr_IP_LPM(struct sr_instance *sr, uint32_t IP);
 void create_send_icmp_echo(struct sr_instance *sr, uint8_t *recieved_packet, char* iface, unsigned int length);
 void handle_arp_reply( struct sr_instance *sr,uint8_t* packet,unsigned int  len, char * interface);
@@ -136,7 +136,6 @@ void handle_arp_reply( struct sr_instance *sr,uint8_t* packet,unsigned int  len,
         req = sr_arpcache_insert(&sr->cache, arp_hdr->ar_sha, arp_hdr->ar_sip);
         
         if(req){
-          printf("wtf?\n");
 
           struct sr_packet *pkt;
           for(pkt = req->packets; pkt!= NULL; pkt= pkt->next){
@@ -153,7 +152,7 @@ void handle_arp_reply( struct sr_instance *sr,uint8_t* packet,unsigned int  len,
              
             }
             else{
-              printf("fuck up while forwarding\n");
+              printf("messed up while forwarding\n");
               
             }
           }
@@ -203,7 +202,7 @@ void handle_ip_packet(struct sr_instance * sr, uint8_t* packet, unsigned int len
       /*checck if it the icmp or not if not do some stuff*/
        if(ip_header->ip_p != 1){
           /*port unreachable*/
-          create_send_icmp_type3(sr, packet, 3 ,interface, len);
+          create_send_icmp_type3(sr, packet, 3, 3 ,interface, len);
           return;
 
         }
@@ -223,7 +222,7 @@ void handle_ip_packet(struct sr_instance * sr, uint8_t* packet, unsigned int len
       if (matched_interface == NULL){
         printf("can't find interface to send dropping the packet and sending an ICMP\n");
         /*create_send_icmp(sr, packet, 3, 0, matched_interface, len);*/
-        create_send_icmp_type3(sr, packet, 0, interface, len);
+        create_send_icmp_type3(sr, packet, 3, 0, interface, len);
         return;
       }
 
@@ -250,6 +249,7 @@ void forward_ip_packet(struct sr_instance * sr, uint8_t * packet, unsigned int l
     ttl--;
     printf("printinag %d\n", ttl );
     if (ttl <= 0){
+      create_send_icmp_type3(sr, packet, 11, 0, matched_interface, len);
 
       /*icmp ttl*/
       return; 
@@ -378,7 +378,7 @@ void handle_arp_request(struct sr_instance* sr, uint8_t* recieved_packet, unsign
 
   uint32_t len = sizeof(sr_arp_hdr_t) + sizeof(sr_ethernet_hdr_t);
 
-  printf("fuck?\n");
+
   print_hdrs(arp_packet, len);
   int ret = sr_send_packet(sr, arp_packet, len, iface->name);
 
@@ -481,11 +481,10 @@ void create_send_icmp_echo(struct sr_instance *sr, uint8_t *recieved_packet, cha
 
 
 
-void create_send_icmp_type3(struct sr_instance *sr, uint8_t *recieved_packet, int code, char* iface, unsigned int length){
+void create_send_icmp_type3(struct sr_instance *sr, uint8_t *recieved_packet, int type, int code, char* iface, unsigned int length){
 
    printf("creating a code %d icmp packet\n", code);
    
-    sr_ethernet_hdr_t *recieved_ether = (sr_ethernet_hdr_t *) recieved_packet;
     sr_ip_hdr_t *recieved_ip = (sr_ip_hdr_t *)(recieved_packet + sizeof(sr_ethernet_hdr_t));
 
    /* unsigned int recieved_data_length = length - sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
@@ -497,13 +496,11 @@ void create_send_icmp_type3(struct sr_instance *sr, uint8_t *recieved_packet, in
     unsigned int len = 0;
     len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);  
     icmp_packet= (uint8_t*) malloc(len);
-   printf("total memory malloc is %d\n", len);
+  
   /* printf("received_data_length is %d\n", recieved_data_length);*/
-   printf("size of ethernet hdr is %d\n", sizeof(sr_ethernet_hdr_t));
-   printf("size of sr_icmp_t3 is %d\n", sizeof(sr_icmp_t3_hdr_t));
-
+  
     sr_ethernet_hdr_t *icmp_ether = (sr_ethernet_hdr_t *) icmp_packet;
-    printf("PRINasiofbhaweiohfioqwehfopqhweion  IFACE%s\n", iface );
+
     struct sr_if* interface = sr_get_interface(sr, iface); 
     print_addr_eth(interface->addr);
     
@@ -522,6 +519,7 @@ void create_send_icmp_type3(struct sr_instance *sr, uint8_t *recieved_packet, in
     icmp_ip->ip_dst = recieved_ip->ip_src; 
     
 
+
      
     char * matched = sr_IP_LPM(sr, recieved_ip->ip_src);
     if (matched == NULL){
@@ -532,9 +530,9 @@ void create_send_icmp_type3(struct sr_instance *sr, uint8_t *recieved_packet, in
     memcpy(icmp_ether->ether_shost, matched_interface->addr, ETHER_ADDR_LEN);
     icmp_ip->ip_sum = cksum((void *)icmp_ip, 20);
 
-    
+
     sr_icmp_t3_hdr_t *icmp_hdr = (sr_icmp_t3_hdr_t *)(icmp_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-    icmp_hdr->icmp_type = 3;
+    icmp_hdr->icmp_type = type;
     icmp_hdr->icmp_code = code; 
     icmp_hdr->icmp_sum = 0;
     icmp_hdr->unused = 0;
@@ -544,23 +542,38 @@ void create_send_icmp_type3(struct sr_instance *sr, uint8_t *recieved_packet, in
       
 
     memcpy(icmp_hdr->data, recieved_ip, ICMP_DATA_SIZE);
-    printf("size first copped is %d\n", sizeof(sr_ip_hdr_t));
 
-   /* uint8_t *rest_data = (uint8_t*) ((icmp_hdr->data) + (sizeof(sr_ip_hdr_t)));
-    memcpy(rest_data, recieved_data, ICMP_DATA_SIZE - sizeof(sr_ip_hdr_t));                                          
-    printf("size second copyed is %d\n", ICMP_DATA_SIZE - sizeof(sr_ip_hdr_t));
-  */
-/*
-    uint8_t * start_icmp = (uint8_t *) (icmp_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));*/
 
-/*    sr_icmp_t3_hdr_t *recieved_icmp = (sr_icmp_t3_hdr_t *)( recieved_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));*/
     icmp_hdr->icmp_sum = cksum((void *)icmp_hdr, sizeof(sr_icmp_t3_hdr_t)) ;
 
     /*unsigned int recieved_icmp_length = sizeof(recieved_icmp) + recieved_data_length;*/
     
    
-   struct sr_arpreq *a =  sr_arpcache_queuereq(&sr->cache, icmp_ip->ip_dst , icmp_packet , len, iface); 
+
+
+     struct sr_arpentry *entry = sr_arpcache_lookup(&sr->cache, icmp_ip->ip_dst);
     
+    if (entry){
+      printf("found in cache!\n");
+
+      memcpy(icmp_ether->ether_dhost, entry->mac, ETHER_ADDR_LEN);
+      memcpy(icmp_ether->ether_shost, matched_interface->addr, ETHER_ADDR_LEN);
+      sr_send_packet(sr, (uint8_t*) icmp_packet, len, matched);
+      /*free(packet);*/
+      return;
+    }
+    else {
+       printf("not in cache\n");
+       memcpy(icmp_ether->ether_shost,matched_interface->addr, ETHER_ADDR_LEN);
+       /*memset(ether_head->ether_dhost, 255, ETHER_ADDR_LEN);*/
+
+      
+      sr_arpcache_queuereq(&sr->cache, icmp_ip->ip_dst , icmp_packet , length, matched); 
+      free(icmp_packet);
+       /*free(packet);*/
+       return;
+
+    }
 
 
     free(icmp_packet);

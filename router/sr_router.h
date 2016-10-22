@@ -75,4 +75,10 @@ void sr_set_ether_ip(struct sr_instance* , uint32_t );
 void sr_set_ether_addr(struct sr_instance* , const unsigned char* );
 void sr_print_if_list(struct sr_instance* );
 
+void create_send_arp_reply(struct sr_instance* sr, uint8_t * packet, struct sr_if* interface);
+uint8_t *make_ip_packet( uint8_t * recieved_packet, unsigned int len);
+void create_send_icmp_echo(struct sr_instance *sr, uint8_t *recieved_packet, char* iface, unsigned int length);
+struct sr_if *find_router_ips(struct sr_instance *sr, uint32_t IP);
+void create_send_icmp_type3(struct sr_instance *sr, uint8_t *recieved_packet, int type, int code, char* iface, unsigned int length);
+
 #endif /* SR_ROUTER_H */

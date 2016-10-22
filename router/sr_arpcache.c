@@ -62,6 +62,7 @@ void create_send_arp(struct sr_instance *sr, struct sr_arpreq *req){
 void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req){
     /*get current time*/
     time_t now = time(0);
+
     if (difftime(now, req->sent) > 1.0){
         if (req->times_sent >= 5){
             /*ICMP unreachable*/
@@ -85,7 +86,7 @@ void handle_host_unreachable(struct sr_instance *sr, struct sr_arpreq * req){
       sr_ip_hdr_t *recieved_ip = (sr_ip_hdr_t *)(pkt->buf + sizeof(sr_ethernet_hdr_t));
       char * iface_recieved_on = sr_IP_LPM(sr, recieved_ip->ip_src);  
       /*char * iface_recieved_on = sr_get_interface(sr, sr_IP_LPM(sr, recieved_ip->ip_src));*/
-      create_send_icmp_type3(sr, pkt->buf, 1, iface_recieved_on, pkt->len);
+      create_send_icmp_type3(sr, pkt->buf, 3, 1, iface_recieved_on, pkt->len);
       sr_arpreq_destroy(&sr->cache, req);
   }
 }
