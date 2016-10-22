@@ -155,7 +155,7 @@ void sr_handlepacket(struct sr_instance* sr,
               printf("Packet Forwarded EZ\n");
               print_hdrs(pkt->buf, pkt->len);
 
-              sr_arpcache_dump(&sr->cache);
+              /*sr_arpcache_dump(&sr->cache);*/
               return;
             }
             else{
@@ -245,7 +245,7 @@ void sr_handlepacket(struct sr_instance* sr,
         else{
           printf("Printing the lpm interface!!!!!!!! %s\n", matched_interface);
           print_addr_ip_int(ntohl(ip_header->ip_dst));
-          ip_header->ip_ttl = ip_header->ip_ttl - -1;
+          ip_header->ip_ttl = ttl;
           ip_header->ip_sum = 0;
           ip_header->ip_sum = cksum((void *) ip_header, 20);
           int ret = sr_send_packet(sr, packet, len, matched_interface);
@@ -284,7 +284,7 @@ void sr_handlepacket(struct sr_instance* sr,
         else{
           printf("Printing the lpm interface!!!!!!!! %s\n", matched_interface);
           print_addr_ip_int(ntohl(ip_header->ip_dst));
-          ip_head->ip_ttl = ip_head->ip_ttl - -1;
+          ip_head->ip_ttl = ttl;
           ip_head->ip_sum = 0;
           ip_head->ip_sum = cksum((void *) ip_head, 20);
           sr_arpcache_queuereq(&sr->cache, ip_head->ip_dst,default_packet, len, matched_interface); 
@@ -403,17 +403,24 @@ char* sr_IP_LPM(struct sr_instance *sr, uint32_t IP){
 
   while(rt_walker->next) {
     if ((rt_walker->dest.s_addr & rt_walker->mask.s_addr) == IP){
-      break;
+       printf(" FUCK SHREYS PRINT STATEMENTS ");
+       printf(" FUCK YOU FUCK YOU FUCK YOU FUCK YOU FUCK YOU FUCK YOU FUCK YOU FUCK YOU FUCK YOU  ");
+       printf(" FUCK YOU FUCK YOU  SHITTY ASS PRINT STATEMENTS   ");
+       printf(" THIS IS IP_LPM FUCK YOU FUCK YOU FUCK YOU");
+
+       printf(" HERE IS THE BINARY AND OF DESTINATION AND MASK");
+       printf(" FOLLOWED BY INPUT IP ");
+      print_addr_ip_int((rt_walker->dest.s_addr & rt_walker->mask.s_addr));
+      print_addr_ip_int(IP);
+      printf(" FUCK YOU FUCK YOU FUCK YOU FUCK YOU FUCK YOU FUCK YOU FUCK YOU FUCK YOU FUCK YOU  ");
+      printf(" FUCK YOU FUCK YOU FUCK YOU FUCK YOU FUCK YOU FUCK YOU FUCK YOU FUCK YOU FUCK YOU  ");
+      printf(" FUCK YOU FUCK YOU FUCK YOU FUCK YOU FUCK YOU FUCK YOU FUCK YOU FUCK YOU FUCK YOU  ");
+      return rt_walker->interface;
     }
     rt_walker = rt_walker->next;
-    if (rt_walker == NULL){
-        printf(" ERROR IN sr_router.c : method sr_IP_LPM : IP not found in routing table \n");
-        return NULL;
-    }
   }
-
-  
-  return rt_walker->interface;
+  printf(" ERROR IN sr_router.c : method sr_IP_LPM : IP not found in routing table \n");
+  return NULL;
 }
 
 void create_send_icmp_echo(struct sr_instance *sr, uint8_t *recieved_packet, char* iface, unsigned int length){
@@ -508,7 +515,7 @@ void create_send_icmp_type3(struct sr_instance *sr, uint8_t *recieved_packet, in
     icmp_ip->ip_hl = recieved_ip->ip_hl;   /* header length */
     icmp_ip->ip_v = recieved_ip->ip_v;    /* version */
     icmp_ip->ip_tos = recieved_ip->ip_tos;
-    icmp_ip->ip_len = sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);     /* type of service */
+    icmp_ip->ip_len = htons( sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t));     /* type of service */
     icmp_ip->ip_id = recieved_ip->ip_id;
     icmp_ip->ip_off = recieved_ip->ip_off;
     icmp_ip->ip_ttl = 64;     /* time to live */
@@ -539,7 +546,7 @@ void create_send_icmp_type3(struct sr_instance *sr, uint8_t *recieved_packet, in
     uint8_t * start_icmp = (uint8_t *) (icmp_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));*/
 
 /*    sr_icmp_t3_hdr_t *recieved_icmp = (sr_icmp_t3_hdr_t *)( recieved_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));*/
-    icmp_hdr->icmp_sum = cksum((void *)icmp_hdr, ntohs(icmp_ip->ip_len) - sizeof(sr_ip_hdr_t));
+    icmp_hdr->icmp_sum = cksum((void *)icmp_hdr, sizeof(sr_icmp_t3_hdr_t)) ;
 
     /*unsigned int recieved_icmp_length = sizeof(recieved_icmp) + recieved_data_length;*/
     
