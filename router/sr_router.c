@@ -74,6 +74,7 @@ void create_send_arp_reply(struct sr_instance* sr, uint8_t * packet, struct sr_i
 uint8_t *make_ip_packet( uint8_t * recieved_packet, unsigned int len);
 void create_send_icmp_echo(struct sr_instance *sr, uint8_t *recieved_packet, char* iface, unsigned int length);
 struct sr_if *find_router_ips(struct sr_instance *sr, uint32_t IP);
+void create_send_icmp_type3(struct sr_instance *sr, uint8_t *recieved_packet, int code, char* iface, unsigned int length);
 
 void sr_handlepacket(struct sr_instance* sr,
         uint8_t * packet/* lent */,
@@ -215,6 +216,7 @@ void sr_handlepacket(struct sr_instance* sr,
       if (matched_interface == NULL){
         printf("can't find interface to send dropping the packet and sending an ICMP\n");
         /*create_send_icmp(sr, packet, 3, 0, matched_interface, len);*/
+        create_send_icmp_type3(sr, packet, 0, interface, len);
         return;
       }
 
@@ -474,6 +476,82 @@ void create_send_icmp_echo(struct sr_instance *sr, uint8_t *recieved_packet, cha
 }
 
 
+
+void create_send_icmp_type3(struct sr_instance *sr, uint8_t *recieved_packet, int code, char* iface, unsigned int length){
+
+   printf("creating a code %d icmp packet\n", code);
+   
+    sr_ethernet_hdr_t *recieved_ether = (sr_ethernet_hdr_t *) recieved_packet;
+    sr_ip_hdr_t *recieved_ip = (sr_ip_hdr_t *)(recieved_packet + sizeof(sr_ethernet_hdr_t));
+
+   /* unsigned int recieved_data_length = length - sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
+
+    uint8_t *recieved_data= (uint8_t*)(recieved_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t));*/
+    
+    /*malloc new icmp packet memory*/
+    uint8_t *icmp_packet;
+    unsigned int len = 0;
+    len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);  
+    icmp_packet= (uint8_t*) malloc(len);
+   printf("total memory malloc is %d\n", len);
+  /* printf("received_data_length is %d\n", recieved_data_length);*/
+   printf("size of ethernet hdr is %d\n", sizeof(sr_ethernet_hdr_t));
+   printf("size of sr_icmp_t3 is %d\n", sizeof(sr_icmp_t3_hdr_t));
+
+    sr_ethernet_hdr_t *icmp_ether = (sr_ethernet_hdr_t *) icmp_packet;
+    printf("PRINasiofbhaweiohfioqwehfopqhweion  IFACE%s\n", iface );
+    struct sr_if* interface = sr_get_interface(sr, iface); 
+    print_addr_eth(interface->addr);
+    memcpy(icmp_ether->ether_shost, interface->addr, ETHER_ADDR_LEN);
+    icmp_ether->ether_type = ntohs(ethertype_ip);
+    sr_ip_hdr_t *icmp_ip = (sr_ip_hdr_t *) (icmp_packet + sizeof(sr_ethernet_hdr_t)); 
+    icmp_ip->ip_hl = recieved_ip->ip_hl;   /* header length */
+    icmp_ip->ip_v = recieved_ip->ip_v;    /* version */
+    icmp_ip->ip_tos = recieved_ip->ip_tos;
+    icmp_ip->ip_len = sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);     /* type of service */
+    icmp_ip->ip_id = recieved_ip->ip_id;
+    icmp_ip->ip_off = recieved_ip->ip_off;
+    icmp_ip->ip_ttl = 64;     /* time to live */
+    icmp_ip->ip_p = 1; /* protocol should be one as icmp */
+    icmp_ip->ip_sum = 0;     
+    icmp_ip->ip_src = interface->ip;
+    icmp_ip->ip_dst = recieved_ip->ip_src;
+    icmp_ip->ip_sum = cksum((void *)icmp_ip, 20);
+
+    sr_icmp_t3_hdr_t *icmp_hdr = (sr_icmp_t3_hdr_t *)(icmp_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+    icmp_hdr->icmp_type = 3;
+    icmp_hdr->icmp_code = code; 
+    icmp_hdr->icmp_sum = 0;
+    icmp_hdr->unused = 0;
+    icmp_hdr->next_mtu = 0;
+    
+    /*  for uint8_t data, it will be IP header + first 8 bytes of datagram (added to 28 = default ICMP DATA SIZE) */
+      
+
+    memcpy(icmp_hdr->data, recieved_ip, ICMP_DATA_SIZE);
+    printf("size first copped is %d\n", sizeof(sr_ip_hdr_t));
+
+   /* uint8_t *rest_data = (uint8_t*) ((icmp_hdr->data) + (sizeof(sr_ip_hdr_t)));
+    memcpy(rest_data, recieved_data, ICMP_DATA_SIZE - sizeof(sr_ip_hdr_t));                                          
+    printf("size second copyed is %d\n", ICMP_DATA_SIZE - sizeof(sr_ip_hdr_t));
+  */
+/*
+    uint8_t * start_icmp = (uint8_t *) (icmp_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));*/
+
+/*    sr_icmp_t3_hdr_t *recieved_icmp = (sr_icmp_t3_hdr_t *)( recieved_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));*/
+    icmp_hdr->icmp_sum = cksum((void *)icmp_hdr, ntohs(icmp_ip->ip_len) - sizeof(sr_ip_hdr_t));
+
+    /*unsigned int recieved_icmp_length = sizeof(recieved_icmp) + recieved_data_length;*/
+    
+   
+   struct sr_arpreq *a =  sr_arpcache_queuereq(&sr->cache, icmp_ip->ip_dst , icmp_packet , len, iface); 
+  printf("FUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUCK\n");
+    
+
+
+    free(icmp_packet);
+
+}
 
 
 
