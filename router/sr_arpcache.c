@@ -13,6 +13,8 @@
 #include "sr_utils.h"
 
 
+void handle_host_unreachable(struct sr_instance *sr, struct sr_arpreq * req);
+
 
 void create_send_arp(struct sr_instance *sr, struct sr_arpreq *req){
 
@@ -23,9 +25,7 @@ void create_send_arp(struct sr_instance *sr, struct sr_arpreq *req){
     /*make ethernet header*/
     sr_ethernet_hdr_t *eth_head = (sr_ethernet_hdr_t*) arp_packet;
 
-    /*get the interface to send arp on*/
-    char* Iface =  sr_IP_LPM(sr, req->ip);
-    struct sr_if* interface= sr_get_interface(sr, Iface);
+    struct sr_if* interface= sr_get_interface(sr, req->packets->iface);
 
     /*copying like this cause they are arrays*/
     memcpy(eth_head->ether_shost, interface->addr, ETHER_ADDR_LEN);
@@ -66,7 +66,7 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req){
         if (req->times_sent >= 5){
             /*ICMP unreachable*/
             printf("Excided 5 tries detroying req!!!!!!!\n");
-            sr_arpreq_destroy(&sr->cache, req);
+            handle_host_unreachable(sr, req);
         }
         else{
             create_send_arp(sr, req);
@@ -77,6 +77,18 @@ void handle_arpreq(struct sr_instance *sr, struct sr_arpreq *req){
 
 }
 
+
+void handle_host_unreachable(struct sr_instance *sr, struct sr_arpreq * req){
+
+    struct sr_packet *pkt;
+    for(pkt = req->packets; pkt!= NULL; pkt= pkt->next){
+      sr_ip_hdr_t *recieved_ip = (sr_ip_hdr_t *)(pkt->buf + sizeof(sr_ethernet_hdr_t));
+      char * iface_recieved_on = sr_IP_LPM(sr, recieved_ip->ip_src);  
+      /*char * iface_recieved_on = sr_get_interface(sr, sr_IP_LPM(sr, recieved_ip->ip_src));*/
+      create_send_icmp_type3(sr, pkt->buf, 1, iface_recieved_on, pkt->len);
+      sr_arpreq_destroy(&sr->cache, req);
+  }
+}
 
 /* 
   This function gets called every second. For each request sent out, we keep
