@@ -25,7 +25,6 @@
 #include "sr_arpcache.h"
 #include "sr_utils.h"
 
-
 /*---------------------------------------------------------------------
  * Method: sr_init(void)
  * Scope:  Global
@@ -49,6 +48,11 @@ void sr_init(struct sr_instance* sr)
     pthread_t thread;
 
     pthread_create(&thread, &(sr->attr), sr_arpcache_timeout, sr);
+
+    if(sr->nat_active == 1){
+      printf("Strating the NAT bruh!\n");
+      sr_nat_init(&(sr->nat));
+    }
 
     /* Add initialization code here! */
 

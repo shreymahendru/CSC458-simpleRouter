@@ -15,6 +15,7 @@
 
 #include "sr_protocol.h"
 #include "sr_arpcache.h"
+#include "sr_nat.h"
 
 /* we dont like this debug , but what to do for varargs ? */
 #ifdef _DEBUG_
@@ -54,6 +55,13 @@ struct sr_instance
     struct sr_arpcache cache;   /* ARP cache */
     pthread_attr_t attr;
     FILE* logfile;
+
+    /*NAT*/
+    struct sr_nat nat;
+    int nat_active;
+    time_t icmp_timeout_nat;
+    time_t tcp_est_timeout_nat;
+    time_t tcp_trans_timeout_nat;
 };
 
 /* -- sr_main.c -- */

@@ -66,10 +66,15 @@ int main(int argc, char **argv)
     unsigned int topo = DEFAULT_TOPO;
     char *logfile = 0;
     struct sr_instance sr;
+    /*NAT stuff*/
+    time_t activate_nat = 0;
+    time_t icmp_timeout_nat = 60;
+    time_t tcp_est_timeout_nat = 7440;
+    time_t tcp_trans_timeout_nat = 300;
 
     printf("Using %s\n", VERSION_INFO);
 
-    while ((c = getopt(argc, argv, "hs:v:p:u:t:r:l:T:")) != EOF)
+    while ((c = getopt(argc, argv, "hs:v:p:u:t:r:l:T:nI:E:R ")) != EOF)
     {
         switch (c)
         {
@@ -101,6 +106,18 @@ int main(int argc, char **argv)
             case 'T':
                 template = optarg;
                 break;
+            case 'n':
+                  activate_nat = 1;
+                  break;
+            case 'I':
+                  icmp_timeout_nat = atoi((char *) optarg);
+                  break;
+            case 'E':
+                  tcp_est_timeout_nat = atoi((char *) optarg);
+                  break;
+            case 'R':
+                  tcp_trans_timeout_nat = atoi((char *) optarg);
+                  break;
         } /* switch */
     } /* -- while -- */
 
@@ -134,6 +151,12 @@ int main(int argc, char **argv)
             exit(1);
         }
     }
+
+    if (activate_nat == 1){
+      /*activating NAT*/
+      sr.nat_active = activate_nat;
+    }
+
 
     Debug("Client %s connecting to Server %s:%d\n", sr.user, server, port);
     if(template)
@@ -249,6 +272,10 @@ static void sr_init_instance(struct sr_instance* sr)
     sr->if_list = 0;
     sr->routing_table = 0;
     sr->logfile = 0;
+    sr->nat_active = 0;
+    sr->icmp_timeout_nat = 60;
+    sr->tcp_est_timeout_nat = 7440;
+    sr->tcp_trans_timeout_nat = 300;
 } /* -- sr_init_instance -- */
 
 /*-----------------------------------------------------------------------------
