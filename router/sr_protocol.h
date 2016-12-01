@@ -111,6 +111,34 @@ struct sr_icmp_t8_hdr{
 } __attribute__ ((packed)) ;
 typedef struct sr_icmp_t8_hdr sr_icmp_t8_hdr_t;
 
+/* Structure of a tcp header
+ */
+struct sr_tcp_hdr {
+    uint16_t port_src;
+    uint16_t port_dst;
+    uint32_t seq_number;
+    uint32_t ack;
+
+    uint8_t data_offset;
+    uint8_t flags;
+
+    uint16_t window_size;
+    uint16_t checksum;
+    uint16_t urgent_p;
+
+} __attribute__ ((packed)) ;
+typedef struct sr_tcp_hdr sr_tcp_hdr_t;
+
+
+struct sr_tcp_pesudo_hdr
+  {
+    uint32_t ip_src;
+    uint32_t ip_dst;
+    uint8_t reserved;
+    uint8_t ip_p;
+    uint16_t len;
+  } __attribute__ ((packed)) ;
+typedef struct sr_tcp_pesudo_hdr sr_tcp_pesudo_hdr_t;
 
 
 /*

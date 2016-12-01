@@ -276,6 +276,7 @@ static void sr_init_instance(struct sr_instance* sr)
     sr->icmp_timeout_nat = 60;
     sr->tcp_est_timeout_nat = 7440;
     sr->tcp_trans_timeout_nat = 300;
+    sr->nat = (struct sr_nat *)malloc(sizeof(struct sr_nat));
 } /* -- sr_init_instance -- */
 
 /*-----------------------------------------------------------------------------

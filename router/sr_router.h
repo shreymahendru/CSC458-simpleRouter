@@ -57,7 +57,7 @@ struct sr_instance
     FILE* logfile;
 
     /*NAT*/
-    struct sr_nat nat;
+    struct sr_nat* nat;
     int nat_active;
     time_t icmp_timeout_nat;
     time_t tcp_est_timeout_nat;

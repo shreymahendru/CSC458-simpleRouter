@@ -50,10 +50,10 @@ void sr_init(struct sr_instance* sr)
     pthread_create(&thread, &(sr->attr), sr_arpcache_timeout, sr);
 
     if(sr->nat_active == 1){
+      sr_nat_init(sr->nat);
       printf("Strating the NAT bruh!\n");
-      sr_nat_init(&(sr->nat));
     }
-
+    printf("Simple Router init done!\n");
     /* Add initialization code here! */
 
 } /* -- sr_init -- */
@@ -93,12 +93,20 @@ void sr_handlepacket(struct sr_instance* sr,
   assert(packet);
   assert(interface);
 
+  /*external interface will always be "eth2"*/
+  if (sr->nat_active == 1){
+    struct sr_if* external_interface = sr_get_interface(sr, "eth2");
+    sr->nat->external_ip = external_interface->ip;
+
+  }
+
+
   printf("*** -> Received packet of length %d \n",len);
 
   /* fill in code here */
 
   /*print packet recieved*/
-  print_hdrs(packet, len);
+  /*print_hdrs(packet, len);*/
 
   if(len <= sizeof(sr_ethernet_hdr_t)){
     /*packet too short*/
@@ -124,6 +132,28 @@ void sr_handlepacket(struct sr_instance* sr,
   }
   else if(ethertype(packet) == ethertype_ip){
     printf("This is an Ip packet\n");
+    sr_ip_hdr_t *received_ip = (sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
+    if ((received_ip->ip_p == 6) && (sr->nat_active == 1)){
+        int a = handle_nat_tcp(sr, packet, interface, len);
+        printf("%d\n",a );
+        if(a == 1){
+          printf("NO EXTERNAL TO INTERNAL MAPPING BITCH\n" );
+          /*dropping packet cause external to internal with no mapping*/
+          return;
+        }
+    }
+    if ((received_ip->ip_p == ip_protocol_icmp)&& (sr->nat_active == 1)){
+      printf("NAT ICMP handleing\n");
+      int a = handle_nat_icmp(sr, packet, interface, len);
+      if (a == 1){
+        printf("NO EXTERNAL TO INTERNAL MAPPING BITCH\n" );
+        /*dropping packet cause external to internal with no mapping*/
+        return;
+      }
+    }
+
+
+
     handle_ip_packet(sr, packet, len, interface);
     return;
   }
@@ -133,8 +163,7 @@ void sr_handlepacket(struct sr_instance* sr,
 
 
 void handle_arp_reply( struct sr_instance *sr,uint8_t* packet,unsigned int  len, char * interface){
-        printf("printing ARP REPLY!!!!!!\n");
-        print_hdrs(packet, len );
+      
         sr_arp_hdr_t * arp_hdr = (sr_arp_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
         struct sr_arpreq* req;
         req = sr_arpcache_insert(&sr->cache, arp_hdr->ar_sha, arp_hdr->ar_sip);
@@ -150,9 +179,6 @@ void handle_arp_reply( struct sr_instance *sr,uint8_t* packet,unsigned int  len,
             int ret = sr_send_packet(sr, pkt->buf, pkt->len, pkt->iface);
             if(ret == 0){
               printf("Packet Forwarded EZ\n");
-              print_hdrs(pkt->buf, pkt->len);
-
-              sr_arpcache_dump(&sr->cache);
 
             }
             else{
@@ -262,9 +288,8 @@ void forward_ip_packet(struct sr_instance * sr, uint8_t * packet, unsigned int l
 
     ip_header->ip_sum = 0;
 
-    ip_header->ip_sum = cksum(ip_header, 20);
-
     print_addr_ip_int(ntohl(ip_header->ip_dst));
+    ip_header->ip_sum = cksum(ip_header, 20);
     struct sr_arpentry *entry = sr_arpcache_lookup(&sr->cache, ip_header->ip_dst);
 
     if (entry){
@@ -321,7 +346,6 @@ char* sr_IP_LPM(struct sr_instance *sr, uint32_t ip){
   if (entry_match != NULL){
         return entry_match->interface;
       }
-
     return NULL;
 }
 
@@ -383,7 +407,7 @@ void handle_arp_request(struct sr_instance* sr, uint8_t* recieved_packet, unsign
   uint32_t len = sizeof(sr_arp_hdr_t) + sizeof(sr_ethernet_hdr_t);
 
 
-  print_hdrs(arp_packet, len);
+
   int ret = sr_send_packet(sr, arp_packet, len, iface->name);
 
   if(ret == 0){
