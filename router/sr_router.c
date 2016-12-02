@@ -551,6 +551,7 @@ void create_send_icmp_type3(struct sr_instance *sr, uint8_t *recieved_packet, in
 
 
     char * matched = sr_IP_LPM(sr, recieved_ip->ip_src);
+    printf("matched check = %s\n", matched);
     if (matched == NULL){
       return;
     }

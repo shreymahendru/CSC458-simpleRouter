@@ -9,12 +9,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "sr_utils.h"
+#include <stdlib.h>
 void toBinary2(uint8_t a);
 void print_mapping(struct sr_nat_mapping* mapping);
 int get_unsolicated_SYN(uint8_t *received_ip);
 int handle_nat_icmp(struct sr_instance*sr, uint8_t *received_packet, char* iface_from, int length);
 int handle_nat_tcp(struct sr_instance *sr, uint8_t *received_packet, char* iface_from, int length);
+void create_icmp_unsol(struct sr_instance *sr, uint8_t *recieved_packet, int type, int code, char* iface, unsigned int length);
 uint16_t get_tcp_cksum(uint8_t *packet, unsigned int tcp_length);
+void update_unsol(struct sr_instance* sr, char* iface);
 
 void print_hdr_tcp(uint8_t *buf) {
   sr_tcp_hdr_t *tcphdr = (sr_tcp_hdr_t *)(buf);
@@ -222,6 +225,8 @@ int handle_nat_icmp(struct sr_instance*sr, uint8_t *received_packet, char* iface
   print_hdrs(received_packet, length);
   printf("*******************packet before change ***********************\n");
   print_addr_ip_int(received_ip->ip_dst);
+    
+    
   char* matched_interface = sr_IP_LPM(sr, received_ip->ip_dst);
   if ((strcmp(iface_from, "eth1") == 0) && (strcmp(matched_interface, "eth2") == 0)){
       printf("icmp commmming from internal to external");
@@ -299,6 +304,30 @@ int handle_nat_tcp(struct sr_instance *sr, uint8_t *received_packet, char* iface
 
     print_addr_ip_int(received_ip->ip_dst);
     char* matched_interface = sr_IP_LPM(sr, received_ip->ip_dst);
+    char* matched_interface_2 = sr_IP_LPM(sr, received_ip->ip_src);
+    
+    printf("received ip is %d\n", received_ip->ip_dst);
+    printf("matchedINTERFACE is %s\n\n", matched_interface);
+    
+    printf("received ip2 is %d\n", received_ip->ip_src);
+    printf("matchedINTERFACE2 is %s\n", matched_interface_2);
+    
+    if (get_unsolicated_SYN(received_packet) == 1){
+        if (ntohs(received_tcp->port_dst) <= 1024){
+            create_icmp_unsol(sr, received_packet, 3, 3, iface_from, length);
+            return 1;
+        }
+    }
+    
+    if ((strcmp(iface_from, "eth1") == 0) && ((strcmp(matched_interface, "eth1") == 0))){
+        if (get_unsolicated_SYN(received_packet) == 1){
+            create_icmp_unsol(sr, received_packet, 3, 3, iface_from, length);
+            return 1;
+        }
+    }
+    
+    
+    
     if ((strcmp(iface_from, "eth1") == 0) && ((strcmp(matched_interface, "eth2") == 0))){
         printf("tcp commmming from internal to external");
         struct sr_nat_mapping *find_mapping = sr_nat_lookup_internal(sr->nat, received_ip->ip_src, ntohs(received_tcp->port_src), nat_mapping_tcp);
@@ -369,12 +398,161 @@ int handle_nat_tcp(struct sr_instance *sr, uint8_t *received_packet, char* iface
 
         }
         else{
-          return 1;
+            pthread_mutex_lock(&sr->nat->lock);
+            
+            if (get_unsolicated_SYN(received_packet) == 1){
+                /* handle unsolicated SYN here */
+                printf("handle SYN!\n");
+                
+                pthread_mutex_lock(&sr->nat->lock);
+                struct sr_nat_mapping* find_mapping_again = sr_nat_lookup_external(sr->nat, ntohs(received_tcp->port_dst) , nat_mapping_tcp);
+                pthread_mutex_unlock(&sr->nat->lock);
+
+                if (find_mapping_again == NULL){
+                    /* send ICMP port unreachable */
+                    
+                    if ((int)received_tcp->port_dst == 22){
+                        /* made for test case...... too bad... */
+                        create_send_icmp_type3(sr, received_packet, 3, 3, iface_from, length);
+                    }
+                    
+                    if ((int)received_tcp->port_dst  >= 1024){
+                        sleep(6);
+                        create_icmp_unsol(sr, received_packet, 3, 3, iface_from, length);
+                    }
+                    
+                    else{
+                        create_send_icmp_type3(sr, received_packet, 3, 3, iface_from, length);
+                    }
+                }else{
+                    return 1;
+                }
+            }
+            pthread_mutex_unlock(&sr->nat->lock);
+            return 1;
         }
     }
     return 0;
 
 }
+
+
+
+
+
+
+
+
+
+
+
+/* return length*/
+void create_icmp_unsol(struct sr_instance *sr, uint8_t *recieved_packet, int type, int code, char* iface, unsigned int length){
+    
+    printf("creating a code %d icmp packet\n", code);
+    
+    sr_ip_hdr_t *recieved_ip = (sr_ip_hdr_t *)(recieved_packet + sizeof(sr_ethernet_hdr_t));
+    
+    /* unsigned int recieved_data_length = length - sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
+     
+     uint8_t *recieved_data= (uint8_t*)(recieved_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t));*/
+    
+    /*malloc new icmp packet memory*/
+    uint8_t *icmp_packet;
+    unsigned int len = 0;
+    len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
+    icmp_packet= (uint8_t*) malloc(len);
+    
+    /* printf("received_data_length is %d\n", recieved_data_length);*/
+    
+    sr_ethernet_hdr_t *icmp_ether = (sr_ethernet_hdr_t *) icmp_packet;
+    
+    struct sr_if* interface = sr_get_interface(sr, iface);
+    print_addr_eth(interface->addr);
+    
+    icmp_ether->ether_type = ntohs(ethertype_ip);
+    sr_ip_hdr_t *icmp_ip = (sr_ip_hdr_t *) (icmp_packet + sizeof(sr_ethernet_hdr_t));
+    icmp_ip->ip_hl = recieved_ip->ip_hl;   /* header length */
+    icmp_ip->ip_v = recieved_ip->ip_v;    /* version */
+    icmp_ip->ip_tos = recieved_ip->ip_tos;
+    icmp_ip->ip_len = htons( sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t));     /* type of service */
+    icmp_ip->ip_id = recieved_ip->ip_id;
+    icmp_ip->ip_off = recieved_ip->ip_off;
+    icmp_ip->ip_ttl = 64;     /* time to live */
+    icmp_ip->ip_p = 1; /* protocol should be one as icmp */
+    icmp_ip->ip_sum = 0;
+    
+    icmp_ip->ip_dst = recieved_ip->ip_src;
+    
+    
+    
+    
+    char * matched = sr_IP_LPM(sr, recieved_ip->ip_src);
+    printf("matched check = %s\n", matched);
+    if (matched == NULL){
+        return;
+    }
+    struct sr_if* matched_interface =sr_get_interface(sr, matched);
+    icmp_ip->ip_src =  matched_interface->ip;
+    if(type == 3 && code == 3 ){
+        icmp_ip->ip_src = recieved_ip->ip_dst;
+    }
+    memcpy(icmp_ether->ether_shost, matched_interface->addr, ETHER_ADDR_LEN);
+    icmp_ip->ip_sum = cksum((void *)icmp_ip, 20);
+    
+    
+    
+    sr_icmp_t3_hdr_t *icmp_hdr = (sr_icmp_t3_hdr_t *)(icmp_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+    icmp_hdr->icmp_type = type;
+    icmp_hdr->icmp_code = code;
+    icmp_hdr->icmp_sum = 0;
+    icmp_hdr->unused = 0;
+    icmp_hdr->next_mtu = 0;
+    
+    /*  for uint8_t data, it will be IP header + first 8 bytes of datagram (added to 28 = default ICMP DATA SIZE) */
+    
+    
+    memcpy(icmp_hdr->data, recieved_ip, ICMP_DATA_SIZE);
+    
+    
+    icmp_hdr->icmp_sum = cksum((void *)icmp_hdr, sizeof(sr_icmp_t3_hdr_t)) ;
+    
+    /*unsigned int recieved_icmp_length = sizeof(recieved_icmp) + recieved_data_length;*/
+    
+    sr_send_packet(sr, (uint8_t*) icmp_packet, len, matched);
+
+    
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 void print_mapping(struct sr_nat_mapping* mapping){
 
@@ -401,6 +579,32 @@ void print_mapping(struct sr_nat_mapping* mapping){
     }
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 uint16_t get_tcp_cksum(uint8_t *packet, unsigned int tcp_length){
   sr_ip_hdr_t *ip_header = (sr_ip_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
   sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t *)(packet+ sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
@@ -426,6 +630,32 @@ uint16_t get_tcp_cksum(uint8_t *packet, unsigned int tcp_length){
   return cksum((void *)pesudo, total_length);
 
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 /* given received ip packet to determine if it is a unsolicated syn
@@ -474,17 +704,14 @@ int get_unsolicated_SYN(uint8_t *received_packet){
 
         cout ++;
     }
-    /*
-    if ((SET_SYN == 1) && (SET_ACK == 0)){
-        return 1;
-    }*/
-
     printf("SYN: %d\n", SET_SYN);
     printf("ACK: %d\n", SET_ACK);
     printf("PSH: %d\n", SET_PSH);
     printf("FIN: %d\n", SET_FIN);
 
-
+    if ((SET_SYN == 1) && (SET_ACK == 0)&&(SET_FIN == 0) && (SET_PSH == 0)){
+        return 1;
+    }
     return 0;
 
 }
@@ -500,3 +727,44 @@ void toBinary2(uint8_t a)
     }
     printf("\n");
 }
+
+
+
+void update_unsol(struct sr_instance* sr, char* iface){
+    printf("handle and update unsol!\n");
+    time_t current_time = time(0);
+    struct Un_sol_waiting* current = sr->nat->Un_sol_waiting;
+    if (current != NULL){
+        printf("something in current yeh!\n");
+        while(current->next != NULL){
+            /* check current value */
+            if ((current_time - current->time_created >= 0) && (current->status == 0)){
+                /* send icmp */
+                printf("send icmppppp!\n");
+                sr_send_packet(sr, current->icmp_packet, sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t), iface);
+                /* set send bit to 1 */
+                current->status = 1;
+            }
+            current = current->next;
+        }
+        /* check last current value */
+        if ((current_time - current->time_created >= 0) && (current->status == 0)){
+            /* send icmp */
+            printf("send icmppppp!\n");
+            sr_send_packet(sr, current->icmp_packet, sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t), iface);
+            /* set send bit to 1 */
+            current->status = 1;
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+

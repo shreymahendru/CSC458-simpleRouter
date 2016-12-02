@@ -6,6 +6,14 @@
 #include <time.h>
 #include <pthread.h>
 
+
+struct Un_sol_waiting{
+    uint8_t *icmp_packet;
+    int packet_len;
+    int status;
+    time_t time_created;
+    struct Un_sol_waiting* next;
+};
 typedef enum {
   nat_mapping_icmp,
   nat_mapping_tcp
@@ -32,6 +40,7 @@ struct sr_nat_mapping {
 struct sr_nat {
   /* add any fields here */
   struct sr_nat_mapping *mappings;
+    struct Un_sol_waiting* Un_sol_waiting;
 
   /* threading */
   pthread_mutex_t lock;
@@ -45,6 +54,7 @@ struct sr_nat {
   time_t icmp_timeout_nat;
   time_t tcp_est_timeout_nat;
   time_t tcp_trans_timeout_nat;
+  
 };
 
 
